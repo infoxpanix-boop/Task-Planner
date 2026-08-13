@@ -8,16 +8,16 @@ and their own private set of tasks.
 
 ```
 frontend/    React app (Vite)
-backend/     Express API + Mongoose models (used for local dev via `server.js`)
-api/         Vercel serverless entry point ([...path].js wraps the same Express app)
-vercel.json  Vercel build config
+backend/     Express API + Mongoose models, run via `server.js`
+vercel.json  Vercel multi-service config
 ```
 
-In production (Vercel) the frontend is served as a static build and every
-`/api/*` request is handled by a single serverless function
-(`api/[...path].js`) that reuses the same Express app defined in
-`backend/app.js`. Locally, `backend/server.js` runs that same app as a plain
-Node HTTP server.
+In production (Vercel), `vercel.json` declares two services — `frontend`
+(built as a static Vite app) and `backend` (run as a persistent Express
+service) — and rewrites `/api/*` requests to the backend service, everything
+else to the frontend. Locally, `npm run dev` runs the same two pieces side by
+side (Vite dev server + `node server.js`), with Vite's dev proxy standing in
+for the rewrite rule.
 
 ## Auth model
 
@@ -53,23 +53,26 @@ Node HTTP server.
 
 ## Deploying to Vercel
 
-The app is structured to deploy as a single Vercel project — static frontend
-+ one serverless function for the whole API.
+The app deploys as a single Vercel project with two services, declared in
+`vercel.json`:
 
-1. Push this project to a Git repo and import it in Vercel (or run
-   `vercel` from the project root).
-2. Vercel will pick up `vercel.json` automatically:
-   - `buildCommand: npm run build` → installs workspace deps and builds the
-     frontend (`frontend/dist`).
-   - `outputDirectory: frontend/dist` → served as static assets.
-   - Everything under `api/` is deployed as serverless functions
-     automatically (`api/[...path].js` catches all `/api/*` routes).
-3. In the Vercel project's **Settings → Environment Variables**, add:
+- **frontend** (`root: frontend`, Vite) — built as a static site.
+- **backend** (`root: backend`) — run as a persistent Express service.
+- Rewrites send `/api/*` to the backend service, everything else to the
+  frontend service.
+
+Steps:
+
+1. Push this project to a Git repo and import it in Vercel. Vercel reads
+   `vercel.json` and sets up both services automatically — no manual "root
+   directory" configuration needed per service.
+2. In the Vercel project's **Settings → Environment Variables**, add (scoped
+   to the **backend** service, since only it reads them):
    - `MONGODB_URI` — your Atlas connection string.
    - `JWT_SECRET` — a long random string (use a different one than local dev).
    - `NODE_ENV=production` (enables the `secure` flag on the auth cookie).
-4. Deploy. On first request, the serverless function connects to MongoDB and
-   reuses that connection across warm invocations.
+3. Deploy. The backend service connects to MongoDB on startup and keeps that
+   connection for the life of the running instance.
 
 ### MongoDB Atlas + restrictive networks
 
